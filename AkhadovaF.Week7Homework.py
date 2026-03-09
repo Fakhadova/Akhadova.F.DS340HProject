@@ -17,13 +17,29 @@ resp_df = pd.concat ([pd.read_csv('/Users/farangizakhadova/Downloads/atusresp_20
                         pd.read_csv('/Users/farangizakhadova/Downloads/atusresp_2012/atusresp_2012.dat'),
                         pd.read_csv('/Users/farangizakhadova/Downloads/atusresp_2013/atusresp_2013.dat')])
 
+
+roster_df = pd.concat([pd.read_csv('/Users/farangizakhadova/Downloads/atusrost_2010/atusrost_2010.dat'),
+                     pd.read_csv('/Users/farangizakhadova/Downloads/atusrost_2012/atusrost_2012.dat'),
+                     pd.read_csv('/Users/farangizakhadova/Downloads/atusrost_2013/atusrost_2013.dat')])
+
+roster_df = roster_df[roster_df['TULINENO'] == 1] # Keep only the main respondent (TULINENO = 1)
+
+
 #Merging
-#First merge: Happiness Ratings + Activity Info
+# 1. First, create the 'df' by merging happiness and activity info
 df = pd.merge(wb_act, act_df, on=['TUCASEID', 'TUACTIVITY_N'], how='inner')
 
-#New merge: Merging demographics by TUCASEID
-df = pd.merge(df, resp_df[['TUCASEID', 'TEAGE', 'TELFS']], on='TUCASEID', how='left')
+# 2. Clean Roster column names (to ensure TEAGE/TESEX are found)
+roster_df.columns = roster_df.columns.str.strip().str.upper()
 
+# 3. Merge with Roster (for Age/Sex)
+df = pd.merge(df, roster_df[['TUCASEID', 'TEAGE', 'TESEX']], on='TUCASEID', how='left')
+
+# 4. Clean Respondent column names (for TELFS)
+resp_df.columns = resp_df.columns.str.strip().str.upper()
+
+# 5. Merge with Respondent (for Employment Status)
+df = pd.merge(df, resp_df[['TUCASEID', 'TELFS']], on='TUCASEID', how='left')
 #Alone Status and Categories
 who_df = pd.concat([pd.read_csv('/Users/farangizakhadova/Downloads/atuswho_2010/atuswho_2010.dat'),
                     pd.read_csv('/Users/farangizakhadova/Downloads/atuswho_2012/atuswho_2012.dat'),
@@ -105,12 +121,12 @@ plot_data = analysis_df.groupby(['activity_group', 'social_context']).apply(get_
 
 #Visualizations #2
 #Plot 1: Weighted Happiness
-plt.figure(figsize=(10, 6))
-sns.barplot(x='activity_group', y='weighted_happiness', hue='social_context', data=plot_data)
-plt.title('Weighted Happiness by Activity and Context')
-plt.ylabel('Weighted Happiness Score (0-6)')
-plt.ylim(0,5)
-plt.show()
+#plt.figure(figsize=(10, 6))
+#sns.barplot(x='activity_group', y='weighted_happiness', hue='social_context', data=plot_data)
+#plt.title('Weighted Happiness by Activity and Context')
+#plt.ylabel('Weighted Happiness Score (0-6)')
+#plt.ylim(0,5)
+#plt.show()
 
 #Plot #2: Weighted Stress
 plt.figure(figsize=(10, 6))
