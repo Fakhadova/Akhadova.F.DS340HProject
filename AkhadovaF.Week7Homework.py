@@ -5,17 +5,17 @@ import plotly.express as px
 
 # 1. Load Data
 #Loading Activity Files
-act_df = pd.concat ([pd.read_csv('Downloads/atusact_2010/atusact_2010.dat'),
-                     pd.read_csv('Downloads/atusact_2012/atusact_2012.dat'),
-                     pd.read_csv('Downloads/atusact_2013/atusact_2013.dat')])
+act_df = pd.concat ([pd.read_csv('/Users/farangizakhadova/Downloads/atusact_2010/atusact_2010.dat'),
+                     pd.read_csv('/Users/farangizakhadova/Downloads/atusact_2012/atusact_2012.dat'),
+                     pd.read_csv('/Users/farangizakhadova/Downloads/atusact_2013/atusact_2013.dat')])
 
 # Load the Well-Being file (this one is already pooled for all years)
-wb_act = pd.read_csv('Downloads/wbact_1013/wbact_1013.dat')
+wb_act = pd.read_csv('/Users/farangizakhadova/Downloads/wbact_1013/wbact_1013.dat')
 
 #Loading Respondent data for Age (TEAGE) and Employment (TELFS)
-resp_df = pd.concat ([pd.read_csv('Downloads/atusresp_2010/atusresp_2010.dat'),
-                        pd.read_csv('Downloads/atusresp_2012/atusresp_2012.dat'),
-                        pd.read_csv('Downloads/atusresp_2013/atusresp_2013.dat')])
+resp_df = pd.concat ([pd.read_csv('/Users/farangizakhadova/Downloads/atusresp_2010/atusresp_2010.dat'),
+                        pd.read_csv('/Users/farangizakhadova/Downloads/atusresp_2012/atusresp_2012.dat'),
+                        pd.read_csv('/Users/farangizakhadova/Downloads/atusresp_2013/atusresp_2013.dat')])
 
 #Merging
 #First merge: Happiness Ratings + Activity Info
@@ -25,9 +25,9 @@ df = pd.merge(wb_act, act_df, on=['TUCASEID', 'TUACTIVITY_N'], how='inner')
 df = pd.merge(df, resp_df[['TUCASEID', 'TEAGE', 'TELFS']], on='TUCASEID', how='left')
 
 #Alone Status and Categories
-who_df = pd.concat([pd.read_csv('Downloads/atuswho_2010/atuswho_2010.dat'),
-                    pd.read_csv('Downloads/atuswho_2012/atuswho_2012.dat'),
-                    pd.read_csv('Downloads/atuswho_2013/atuswho_2013.dat')])
+who_df = pd.concat([pd.read_csv('/Users/farangizakhadova/Downloads/atuswho_2010/atuswho_2010.dat'),
+                    pd.read_csv('/Users/farangizakhadova/Downloads/atuswho_2012/atuswho_2012.dat'),
+                    pd.read_csv('/Users/farangizakhadova/Downloads/atuswho_2013/atuswho_2013.dat')])
 # Create a simple True/False column: Is the person alone? (Code 18 = Alone)
 who_df['is_alone'] = (who_df['TUWHO_CODE'] == 18)
 alone_status = who_df.groupby(['TUCASEID', 'TUACTIVITY_N'])['is_alone'].all().reset_index()
