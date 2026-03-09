@@ -121,12 +121,12 @@ plot_data = analysis_df.groupby(['activity_group', 'social_context']).apply(get_
 
 #Visualizations #2
 #Plot 1: Weighted Happiness
-#plt.figure(figsize=(10, 6))
-#sns.barplot(x='activity_group', y='weighted_happiness', hue='social_context', data=plot_data)
-#plt.title('Weighted Happiness by Activity and Context')
-#plt.ylabel('Weighted Happiness Score (0-6)')
-#plt.ylim(0,5)
-#plt.show()
+plt.figure(figsize=(10, 6))
+sns.barplot(x='activity_group', y='weighted_happiness', hue='social_context', data=plot_data)
+plt.title('Weighted Happiness by Activity and Context')
+plt.ylabel('Weighted Happiness Score (0-6)')
+plt.ylim(0,5)
+plt.show()
 
 #Plot #2: Weighted Stress
 plt.figure(figsize=(10, 6))
