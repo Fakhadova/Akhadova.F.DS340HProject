@@ -76,12 +76,21 @@ final_data['Activity_Group'] = 'Other'
 final_data.loc[final_data['activity_6d'].isin(screen_codes), 'Activity_Group'] = 'Screen-Based'
 final_data.loc[final_data['activity_6d'].isin(nonscreen_codes), 'Activity_Group'] = 'Non-Screen'
 
+print(final_data[['TEAGE', 'TELFS', 'is_alone', 'WUHAPPY']].isnull().sum())
+
+
+
 #Filter out other stuff so that there's only leisure (missing values)
 analysis_df = final_data[final_data['Activity_Group'] != 'Other']
 analysis_df.columns = analysis_df.columns.str.strip().str.lower()
 
 #New: Filter out missing happiness and stress values (-2, -3)
-analysis_df = analysis_df[(analysis_df['wuhappy'] >= 0) & (analysis_df['wustress'] >= 0)]       
+analysis_df = analysis_df[(analysis_df['wuhappy'] >= 0) & (analysis_df['wustress'] >= 0)]      
+
+# Remove any rows where the 'is_alone' merge failed
+analysis_df = analysis_df.dropna(subset=['is_alone'])
+
+print(analysis_df['activity_group'].value_counts())
 
 #Visualization #1
 # 1. Create the social_context column using the lowercase 'is_alone'
