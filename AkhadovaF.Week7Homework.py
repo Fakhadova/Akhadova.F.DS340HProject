@@ -160,6 +160,11 @@ print(weighted_table)
 #Save the weighted table in case I want to include it in my homework write-up
 weighted_table.to_csv("/Users/farangizakhadova/Downloads/weighted_results_table.csv", index=False)
 
+#Non-screen leisure done with others has the highest weighted average happiness, at 4.785,
+#screen-based leisure done alone has the lowest, at 4.063. 
+#The stress differences are smaller overall, but the same group pattern appears 
+#non-screen leisure with others has the lowest weighted stress, 0.969, and screen-based leisure alone has the highest, 1.079.
+
 #Visualization #1
 #Interactive bar chart for weighted happiness
 fig = px.bar(
@@ -242,3 +247,9 @@ with open("/Users/farangizakhadova/Downloads/happiness_model_summary.txt", "w") 
 
 with open("/Users/farangizakhadova/Downloads/stress_model_summary.txt", "w") as f:
     f.write(stress_model.summary().as_text())
+
+#happiness pattern still looks more meaningful than the stress pattern. 
+#In the happiness model, being with others is associated with a 0.554-point increase in happiness than being alone
+#That result was statistically significant
+#The interaction between screen-based leisure and being with others is -0.266 and also statistically significant (p = .020)
+#in the stress model, the interaction is very small (0.029) and not statistically significant (p = .776)
