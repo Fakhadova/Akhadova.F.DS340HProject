@@ -2,6 +2,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
+import numpy as np
+import statsmodels.formula.api as smf
+
 
 # 1. Load Data
 #Loading Activity Files
@@ -76,12 +79,15 @@ final_data['Activity_Group'] = 'Other'
 final_data.loc[final_data['activity_6d'].isin(screen_codes), 'Activity_Group'] = 'Screen-Based'
 final_data.loc[final_data['activity_6d'].isin(nonscreen_codes), 'Activity_Group'] = 'Non-Screen'
 
+#check missing values in main variables before filtering
 print(final_data[['TEAGE', 'TELFS', 'is_alone', 'WUHAPPY']].isnull().sum())
 
 
 
 #Filter out other stuff so that there's only leisure (missing values)
 analysis_df = final_data[final_data['Activity_Group'] != 'Other']
+
+#make all column names lowercase
 analysis_df.columns = analysis_df.columns.str.strip().str.lower()
 
 #New: Filter out missing happiness and stress values (-2, -3)
@@ -91,56 +97,148 @@ analysis_df = analysis_df[(analysis_df['wuhappy'] >= 0) & (analysis_df['wustress
 analysis_df = analysis_df.dropna(subset=['is_alone'])
 
 print(analysis_df['activity_group'].value_counts())
+# Safety filter: Ensure Age and Employment also have no negative survey codes
+analysis_df = analysis_df[analysis_df['teage'] >= 0]
+analysis_df = analysis_df[analysis_df['telfs'] >= 0]
 
-#Visualization #1
-# 1. Create the social_context column using the lowercase 'is_alone'
-analysis_df['social_context'] = analysis_df['is_alone'].replace({True: 'Alone', False: 'With Others'})
+print(f"Final clean sample size: {len(analysis_df)} rows")
 
-# 2. Group data
-plot_data = analysis_df.groupby(['activity_group', 'social_context'])['wuhappy'].mean().reset_index()
+#create social context lables 
+#turns the true/false variable into nicer labels for tables and plots
+analysis_df['social_context'] = analysis_df['is_alone'].replace({
+    True: 'Alone',
+    False: 'With Others'
+})
 
-# 3. Create the interactive bar chart
-fig = px.bar(
-    plot_data, 
-    x='activity_group', 
-    y='wuhappy', 
-    color='social_context',
-    barmode='group',
-    title='Average Happiness: Screen-Based vs. Non-Screen Leisure',
-    labels={'wuhappy': 'Happiness Score', 'activity_group': 'Activity Type', 'social_context': 'Context'}
-)
+#project progress (3/30) - Descriptive tables + weighted results
+#sample description 
 
-# 4. Save interactive plot as HTML
-fig.write_html("/Users/farangizakhadova/Downloads/happiness_map_style.html")
+#Sample Description
+#Count how many unique respondents and how many total activity episodes are in the final data
+num_respondents = analysis_df['tucaseid'].nunique()
+num_episodes = len(analysis_df)
 
-# 5. Show
-fig.show()
+print("Number of respondents:", num_respondents)
+print("Number of activity episodes:", num_episodes)
+
+#Show how many episodes are in each leisure type
+print("\nEpisodes by activity group:")
+print(analysis_df['activity_group'].value_counts())
+
+#Show the four main comparison groups
+print("\nEpisodes by activity group and social context:")
+group_counts = analysis_df.groupby(['activity_group', 'social_context']).size().reset_index(name='n')
+print(group_counts)
+
+#Basic sample characteristics
+print("\nSummary of age:")
+print(analysis_df['teage'].describe())
+
+print("\nSex distribution:")
+print(analysis_df['tesex'].value_counts(dropna=False))
+
+print("\nEmployment status distribution:")
+print(analysis_df['telfs'].value_counts(dropna=False))
 
 #Weighted means calculation
 #Creating weighted averages to represent the US population
-def get_weighted_stats(data):
-    #Calculate the weighted mean for happiness using wufnactwt
-    h_mean = (data['wuhappy'] * data['wufnactwt']).sum()/data['wufnactwt'].sum()
-    #Calculate the weighted mean for stress using wufnactwt
-    s_mean = (data['wustress'] * data['wufnactwt']).sum()/data['wufnactwt'].sum()
-    return pd.Series({'weighted_happiness': h_mean, 'weighted_stress': s_mean})
+def weighted_mean(values, weights):
+    return (values * weights).sum() / weights.sum()
 
-#Create the summary table for plotting
-plot_data = analysis_df.groupby(['activity_group', 'social_context']).apply(get_weighted_stats).reset_index()
+#Create a weighted summary table for the four groups
+weighted_table = analysis_df.groupby(['activity_group', 'social_context']).apply(
+    lambda x: pd.Series({
+        'n_episodes': len(x),
+        'weighted_happiness': weighted_mean(x['wuhappy'], x['wufnactwt']),
+        'weighted_stress': weighted_mean(x['wustress'], x['wufnactwt'])
+    })
+).reset_index()
+
+print("\nWeighted results table:")
+print(weighted_table)
+
+#Save the weighted table in case I want to include it in my homework write-up
+weighted_table.to_csv("/Users/farangizakhadova/Downloads/weighted_results_table.csv", index=False)
+
+#Visualization #1
+#Interactive bar chart for weighted happiness
+fig = px.bar(
+    weighted_table,
+    x='activity_group',
+    y='weighted_happiness',
+    color='social_context',
+    barmode='group',
+    title='Weighted Happiness: Screen-Based vs. Non-Screen Leisure',
+    labels={'weighted_happiness': 'Happiness Score', 'activity_group': 'Activity Type', 'social_context': 'Context'}
+)
+
+#Save interactive plot as HTML
+fig.write_html("/Users/farangizakhadova/Downloads/weighted_happiness_chart.html")
+
+#Show plot
+fig.show()
 
 #Visualizations #2
 #Plot 1: Weighted Happiness
 plt.figure(figsize=(10, 6))
-sns.barplot(x='activity_group', y='weighted_happiness', hue='social_context', data=plot_data)
+sns.barplot(x='activity_group', y='weighted_happiness', hue='social_context', data=weighted_table)
 plt.title('Weighted Happiness by Activity and Context')
 plt.ylabel('Weighted Happiness Score (0-6)')
-plt.ylim(0,5)
+plt.xlabel('Activity Type')
+plt.ylim(0, 6)
+plt.tight_layout()
 plt.show()
 
 #Plot #2: Weighted Stress
 plt.figure(figsize=(10, 6))
-sns.barplot(x='activity_group', y='weighted_stress', hue='social_context', data=plot_data)
+sns.barplot(x='activity_group', y='weighted_stress', hue='social_context', data=weighted_table)
 plt.title('Weighted Stress by Activity and Context')
 plt.ylabel('Weighted Stress Score (0-6)')
-plt.ylim(0,5)
+plt.xlabel('Activity Type')
+plt.ylim(0, 6)
+plt.tight_layout()
 plt.show()
+
+#Prepare variables for regression
+#Convert these to category so statsmodels treats them as groups instead of regular numbers
+analysis_df['activity_group'] = analysis_df['activity_group'].astype('category')
+analysis_df['social_context'] = analysis_df['social_context'].astype('category')
+analysis_df['tesex'] = analysis_df['tesex'].astype('category')
+analysis_df['telfs'] = analysis_df['telfs'].astype('category')
+
+#Run Model 1: Happiness
+#This tests whether happiness differs by leisure type, social context,
+#and the interaction between the two, while controlling for age, sex, and employment
+happiness_model = smf.wls(
+    formula='wuhappy ~ C(activity_group) * C(social_context) + teage + C(tesex) + C(telfs)',
+    data=analysis_df,
+    weights=analysis_df['wufnactwt']
+).fit(
+    cov_type='cluster',
+    cov_kwds={'groups': analysis_df['tucaseid']}
+)
+
+print("\nHAPPINESS MODEL RESULTS")
+print(happiness_model.summary())
+
+#Run Model 2: Stress
+#This does the same thing, but now stress is the outcome
+stress_model = smf.wls(
+    formula='wustress ~ C(activity_group) * C(social_context) + teage + C(tesex) + C(telfs)',
+    data=analysis_df,
+    weights=analysis_df['wufnactwt']
+).fit(
+    cov_type='cluster',
+    cov_kwds={'groups': analysis_df['tucaseid']}
+)
+
+print("\nSTRESS MODEL RESULTS")
+print(stress_model.summary())
+
+#Save model summaries as text files
+#This makes it easier to copy results into the write-up later
+with open("/Users/farangizakhadova/Downloads/happiness_model_summary.txt", "w") as f:
+    f.write(happiness_model.summary().as_text())
+
+with open("/Users/farangizakhadova/Downloads/stress_model_summary.txt", "w") as f:
+    f.write(stress_model.summary().as_text())
