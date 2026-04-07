@@ -110,6 +110,28 @@ analysis_df['social_context'] = analysis_df['is_alone'].replace({
     False: 'With Others'
 })
 
+#Check how many activity episodes each respondent contributes
+rows_per_person = analysis_df.groupby('tucaseid').size()
+
+print("\nHow many respondents contribute how many rows?")
+print(rows_per_person.value_counts().sort_index())
+
+print("\nSummary of rows per respondent:")
+print(rows_per_person.describe())
+
+#How many respondents have more than 1 row?
+num_repeat_people = (rows_per_person > 1).sum()
+print("\nNumber of respondents with more than 1 row:", num_repeat_people)
+
+#How many rows come from respondents with more than 1 row?
+repeat_ids = rows_per_person[rows_per_person > 1].index
+rows_from_repeat_people = analysis_df['tucaseid'].isin(repeat_ids).sum()
+print("Number of rows from respondents with more than 1 row:", rows_from_repeat_people)
+
+#What proportion of all rows are from repeated respondents?
+print("Proportion of rows from repeated respondents:",
+      rows_from_repeat_people / len(analysis_df))
+
 #project progress (3/30) - Descriptive tables + weighted results
 #sample description 
 
@@ -149,8 +171,8 @@ def weighted_mean(values, weights):
 weighted_table = analysis_df.groupby(['activity_group', 'social_context']).apply(
     lambda x: pd.Series({
         'n_episodes': len(x),
-        'weighted_happiness': weighted_mean(x['wuhappy'], x['wufnactwt']),
-        'weighted_stress': weighted_mean(x['wustress'], x['wufnactwt'])
+        'weighted_happiness': weighted_mean(x['wuhappy'], x['wufnactwtp']),
+        'weighted_stress': weighted_mean(x['wustress'], x['wufnactwtp'])
     })
 ).reset_index()
 
@@ -217,7 +239,7 @@ analysis_df['telfs'] = analysis_df['telfs'].astype('category')
 happiness_model = smf.wls(
     formula='wuhappy ~ C(activity_group) * C(social_context) + teage + C(tesex) + C(telfs)',
     data=analysis_df,
-    weights=analysis_df['wufnactwt']
+    weights=analysis_df['wufnactwtp']
 ).fit(
     cov_type='cluster',
     cov_kwds={'groups': analysis_df['tucaseid']}
@@ -231,7 +253,7 @@ print(happiness_model.summary())
 stress_model = smf.wls(
     formula='wustress ~ C(activity_group) * C(social_context) + teage + C(tesex) + C(telfs)',
     data=analysis_df,
-    weights=analysis_df['wufnactwt']
+    weights=analysis_df['wufnactwtp']
 ).fit(
     cov_type='cluster',
     cov_kwds={'groups': analysis_df['tucaseid']}
@@ -253,3 +275,93 @@ with open("/Users/farangizakhadova/Downloads/stress_model_summary.txt", "w") as 
 #That result was statistically significant
 #The interaction between screen-based leisure and being with others is -0.266 and also statistically significant (p = .020)
 #in the stress model, the interaction is very small (0.029) and not statistically significant (p = .776)
+
+#new numbers are 4.090 and 4.785
+
+
+import statsmodels.api as sm
+
+
+# MIXED-EFFECTS MODELS
+# Random intercept for respondent ID
+
+# If re_formula is left out, the default is a random intercept.
+
+# For MixedLM, use a clean copy with the needed variables only
+mixed_df = analysis_df[['tucaseid', 'wuhappy', 'wustress',
+                        'activity_group', 'social_context',
+                        'teage', 'tesex', 'telfs']].dropna().copy()
+
+# Make sure the categorical variables are treated as categories
+mixed_df['activity_group'] = mixed_df['activity_group'].astype('category')
+mixed_df['social_context'] = mixed_df['social_context'].astype('category')
+mixed_df['tesex'] = mixed_df['tesex'].astype('category')
+mixed_df['telfs'] = mixed_df['telfs'].astype('category')
+
+# Mixed Model 1: Happiness
+mixed_happy_model = sm.MixedLM.from_formula(
+    'wuhappy ~ C(activity_group) * C(social_context) + teage + C(tesex) + C(telfs)',
+    groups='tucaseid',
+    data=mixed_df
+)
+
+mixed_happy_result = mixed_happy_model.fit(reml=False, method='lbfgs')
+
+print("\nMIXED MODEL RESULTS: HAPPINESS")
+print(mixed_happy_result.summary())
+
+# Mixed Model 2: Stress
+mixed_stress_model = sm.MixedLM.from_formula(
+    'wustress ~ C(activity_group) * C(social_context) + teage + C(tesex) + C(telfs)',
+    groups='tucaseid',
+    data=mixed_df
+)
+
+mixed_stress_result = mixed_stress_model.fit(reml=False, method='lbfgs')
+
+print("\nMIXED MODEL RESULTS: STRESS")
+print(mixed_stress_result.summary())
+
+# Save mixed model summaries
+with open("/Users/farangizakhadova/Downloads/mixed_happiness_model_summary.txt", "w") as f:
+    f.write(mixed_happy_result.summary().as_text())
+
+with open("/Users/farangizakhadova/Downloads/mixed_stress_model_summary.txt", "w") as f:
+    f.write(mixed_stress_result.summary().as_text())
+
+    #Create a comparison table of the most important coefficients
+comparison_table = pd.DataFrame({
+    'Result to compare': [
+        'Happiness: Screen-Based',
+        'Happiness: With Others',
+        'Happiness interaction',
+        'Stress: Screen-Based',
+        'Stress: With Others',
+        'Stress interaction',
+        'Respondent random intercept variance'
+    ],
+    'WLS + clustered SE': [
+        f"{happiness_model.params['C(activity_group)[T.Screen-Based]']:.3f} (p = {happiness_model.pvalues['C(activity_group)[T.Screen-Based]']:.3f})",
+        f"{happiness_model.params['C(social_context)[T.With Others]']:.3f} (p < .001)" if happiness_model.pvalues['C(social_context)[T.With Others]'] < 0.001 else f"{happiness_model.params['C(social_context)[T.With Others]']:.3f} (p = {happiness_model.pvalues['C(social_context)[T.With Others]']:.3f})",
+        f"{happiness_model.params['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']:.3f} (p = {happiness_model.pvalues['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']:.3f})",
+        f"{stress_model.params['C(activity_group)[T.Screen-Based]']:.3f} (p = {stress_model.pvalues['C(activity_group)[T.Screen-Based]']:.3f})",
+        f"{stress_model.params['C(social_context)[T.With Others]']:.3f} (p = {stress_model.pvalues['C(social_context)[T.With Others]']:.3f})",
+        f"{stress_model.params['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']:.3f} (p = {stress_model.pvalues['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']:.3f})",
+        "—"
+    ],
+    'Mixed-effects model': [
+        f"{mixed_happy_result.params['C(activity_group)[T.Screen-Based]']:.3f} (p = {mixed_happy_result.pvalues['C(activity_group)[T.Screen-Based]']:.3f})",
+        f"{mixed_happy_result.params['C(social_context)[T.With Others]']:.3f} (p < .001)" if mixed_happy_result.pvalues['C(social_context)[T.With Others]'] < 0.001 else f"{mixed_happy_result.params['C(social_context)[T.With Others]']:.3f} (p = {mixed_happy_result.pvalues['C(social_context)[T.With Others]']:.3f})",
+        f"{mixed_happy_result.params['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']:.3f} (p = {mixed_happy_result.pvalues['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']:.3f})",
+        f"{mixed_stress_result.params['C(activity_group)[T.Screen-Based]']:.3f} (p = {mixed_stress_result.pvalues['C(activity_group)[T.Screen-Based]']:.3f})",
+        f"{mixed_stress_result.params['C(social_context)[T.With Others]']:.3f} (p = {mixed_stress_result.pvalues['C(social_context)[T.With Others]']:.3f})",
+        f"{mixed_stress_result.params['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']:.3f} (p = {mixed_stress_result.pvalues['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']:.3f})",
+        f"{mixed_happy_result.params['tucaseid Var']:.3f} (happiness), {mixed_stress_result.params['tucaseid Var']:.3f} (stress)"
+    ]
+})
+
+print("\nCOMPARISON TABLE")
+print(comparison_table)
+
+#Save it in case you want to use it in the write-up
+comparison_table.to_csv("/Users/farangizakhadova/Downloads/model_comparison_table.csv", index=False)
