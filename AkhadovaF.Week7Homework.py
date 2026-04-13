@@ -207,24 +207,24 @@ fig.show()
 
 #Visualizations #2
 #Plot 1: Weighted Happiness
-plt.figure(figsize=(10, 6))
-sns.barplot(x='activity_group', y='weighted_happiness', hue='social_context', data=weighted_table)
-plt.title('Weighted Happiness by Activity and Context')
-plt.ylabel('Weighted Happiness Score (0-6)')
-plt.xlabel('Activity Type')
-plt.ylim(0, 6)
-plt.tight_layout()
-plt.show()
+#plt.figure(figsize=(10, 6))
+#sns.barplot(x='activity_group', y='weighted_happiness', hue='social_context', data=weighted_table)
+#plt.title('Weighted Happiness by Activity and Context')
+#plt.ylabel('Weighted Happiness Score (0-6)')
+#plt.xlabel('Activity Type')
+#plt.ylim(0, 6)
+#plt.tight_layout()
+#plt.show()
 
 #Plot #2: Weighted Stress
-plt.figure(figsize=(10, 6))
-sns.barplot(x='activity_group', y='weighted_stress', hue='social_context', data=weighted_table)
-plt.title('Weighted Stress by Activity and Context')
-plt.ylabel('Weighted Stress Score (0-6)')
-plt.xlabel('Activity Type')
-plt.ylim(0, 6)
-plt.tight_layout()
-plt.show()
+#plt.figure(figsize=(10, 6))
+#sns.barplot(x='activity_group', y='weighted_stress', hue='social_context', data=weighted_table)
+#plt.title('Weighted Stress by Activity and Context')
+#plt.ylabel('Weighted Stress Score (0-6)')
+#plt.xlabel('Activity Type')
+#plt.ylim(0, 6)
+#plt.tight_layout()
+#plt.show()
 
 #Prepare variables for regression
 #Convert these to category so statsmodels treats them as groups instead of regular numbers
@@ -365,3 +365,310 @@ print(comparison_table)
 
 #Save it in case you want to use it in the write-up
 comparison_table.to_csv("/Users/farangizakhadova/Downloads/model_comparison_table.csv", index=False)
+
+# ONE GRAPHIC: point-range plot with two side-by-side panels
+# Put this after weighted_table is created
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Function to calculate weighted mean
+def weighted_mean(values, weights):
+    return np.sum(values * weights) / np.sum(weights)
+
+# Function to calculate approximate weighted standard error
+def weighted_se(values, weights):
+    mean = weighted_mean(values, weights)
+
+    # weighted variance
+    weighted_var = np.sum(weights * (values - mean) ** 2) / np.sum(weights)
+
+    # effective sample size
+    n_eff = (np.sum(weights) ** 2) / np.sum(weights ** 2)
+
+    # standard error
+    se = np.sqrt(weighted_var / n_eff)
+    return se
+
+# Create table for plotting
+plot_table = analysis_df.groupby(['activity_group', 'social_context']).apply(
+    lambda x: pd.Series({
+        'happiness_mean': weighted_mean(x['wuhappy'], x['wufnactwtp']),
+        'happiness_se': weighted_se(x['wuhappy'], x['wufnactwtp']),
+        'stress_mean': weighted_mean(x['wustress'], x['wufnactwtp']),
+        'stress_se': weighted_se(x['wustress'], x['wufnactwtp'])
+    })
+).reset_index()
+
+# Set order so groups appear nicely
+group_order = [
+    ('Non-Screen', 'Alone'),
+    ('Non-Screen', 'With Others'),
+    ('Screen-Based', 'Alone'),
+    ('Screen-Based', 'With Others')
+]
+
+plot_table['sort_key'] = plot_table.apply(
+    lambda row: group_order.index((row['activity_group'], row['social_context'])),
+    axis=1
+)
+
+plot_table = plot_table.sort_values('sort_key').reset_index(drop=True)
+
+# Create combined x-axis labels
+plot_table['group_label'] = [
+    'Non-Screen\nAlone',
+    'Non-Screen\nWith Others',
+    'Screen-Based\nAlone',
+    'Screen-Based\nWith Others'
+]
+
+# X positions
+x = np.arange(len(plot_table))
+
+# Create one figure with two panels
+fig, axes = plt.subplots(1, 2, figsize=(13, 6), sharex=True)
+
+# Left panel: Happiness
+axes[0].errorbar(
+    x,
+    plot_table['happiness_mean'],
+    yerr=1.96 * plot_table['happiness_se'],
+    fmt='o',
+    capsize=5
+)
+axes[0].set_title('Happiness')
+axes[0].set_ylabel('Weighted Mean (0–6)')
+axes[0].set_xlabel('Group')
+axes[0].set_xticks(x)
+axes[0].set_xticklabels(plot_table['group_label'])
+axes[0].set_ylim(0, 6)
+
+# Right panel: Stress
+axes[1].errorbar(
+    x,
+    plot_table['stress_mean'],
+    yerr=1.96 * plot_table['stress_se'],
+    fmt='o',
+    capsize=5
+)
+axes[1].set_title('Stress')
+axes[1].set_ylabel('Weighted Mean (0–6)')
+axes[1].set_xlabel('Group')
+axes[1].set_xticks(x)
+axes[1].set_xticklabels(plot_table['group_label'])
+axes[1].set_ylim(0, 6)
+
+# Overall title
+fig.suptitle('Weighted Mean Well-Being by Activity Type and Social Context', fontsize=14)
+
+plt.tight_layout()
+plt.show()
+
+
+# --------------------------------------------------
+# MODEL SUMMARY OUTPUTS FOR GOOGLE SHEETS
+# Put this AFTER all four models are fit
+# --------------------------------------------------
+
+import pandas as pd
+import numpy as np
+
+# ---------- helper functions ----------
+
+def format_p(p):
+    if p < 0.001:
+        return "< .001"
+    else:
+        return f"{p:.3f}"
+
+def stars(p):
+    if p < 0.001:
+        return "***"
+    elif p < 0.01:
+        return "**"
+    elif p < 0.05:
+        return "*"
+    else:
+        return ""
+
+# Pseudo-R^2 for mixed models:
+# marginal R^2 = variance explained by fixed effects / total variance
+# conditional R^2 = variance explained by fixed + random effects / total variance
+def mixed_r2(result, df, outcome_name):
+    # fixed-effects fitted values
+    fixed_fitted = result.predict(df)
+    var_fixed = np.var(fixed_fitted, ddof=1)
+
+    # residual variance
+    var_resid = result.scale
+
+    # random intercept variance
+    # cov_re is usually a 1x1 matrix for random intercept model
+    var_random = float(result.cov_re.iloc[0, 0])
+
+    total_var = var_fixed + var_random + var_resid
+
+    marginal_r2 = var_fixed / total_var
+    conditional_r2 = (var_fixed + var_random) / total_var
+
+    return marginal_r2, conditional_r2
+
+# ---------- get mixed-model pseudo-R^2 ----------
+mixed_happy_marginal_r2, mixed_happy_conditional_r2 = mixed_r2(
+    mixed_happy_result, mixed_df, 'wuhappy'
+)
+
+mixed_stress_marginal_r2, mixed_stress_conditional_r2 = mixed_r2(
+    mixed_stress_result, mixed_df, 'wustress'
+)
+
+# ---------- fit statistics table ----------
+fit_stats = pd.DataFrame({
+    'model': ['WLS', 'WLS', 'Mixed-effects', 'Mixed-effects'],
+    'outcome': ['Happiness', 'Stress', 'Happiness', 'Stress'],
+    'aic': [
+        happiness_model.aic,
+        stress_model.aic,
+        mixed_happy_result.aic,
+        mixed_stress_result.aic
+    ],
+    'bic': [
+        happiness_model.bic,
+        stress_model.bic,
+        mixed_happy_result.bic,
+        mixed_stress_result.bic
+    ],
+    'log_likelihood': [
+        happiness_model.llf,
+        stress_model.llf,
+        mixed_happy_result.llf,
+        mixed_stress_result.llf
+    ],
+    'r_squared': [
+        happiness_model.rsquared,
+        stress_model.rsquared,
+        mixed_happy_marginal_r2,
+        mixed_stress_marginal_r2
+    ],
+    'adj_r_squared_or_conditional_r2': [
+        happiness_model.rsquared_adj,
+        stress_model.rsquared_adj,
+        mixed_happy_conditional_r2,
+        mixed_stress_conditional_r2
+    ]
+})
+
+print("\nFIT STATISTICS")
+print(fit_stats)
+
+fit_stats.to_csv("/Users/farangizakhadova/Downloads/model_fit_stats_for_sheets.csv", index=False)
+
+# ---------- main coefficient table ----------
+results_table = pd.DataFrame({
+    'result': [
+        'Screen-Based (Happiness)',
+        'With Others (Happiness)',
+        'Screen-Based × With Others (Happiness)',
+        'Screen-Based (Stress)',
+        'With Others (Stress)',
+        'Screen-Based × With Others (Stress)'
+    ],
+    'wls_coef': [
+        happiness_model.params['C(activity_group)[T.Screen-Based]'],
+        happiness_model.params['C(social_context)[T.With Others]'],
+        happiness_model.params['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]'],
+        stress_model.params['C(activity_group)[T.Screen-Based]'],
+        stress_model.params['C(social_context)[T.With Others]'],
+        stress_model.params['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']
+    ],
+    'wls_p': [
+        happiness_model.pvalues['C(activity_group)[T.Screen-Based]'],
+        happiness_model.pvalues['C(social_context)[T.With Others]'],
+        happiness_model.pvalues['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]'],
+        stress_model.pvalues['C(activity_group)[T.Screen-Based]'],
+        stress_model.pvalues['C(social_context)[T.With Others]'],
+        stress_model.pvalues['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']
+    ],
+    'wls_sig': [
+        stars(happiness_model.pvalues['C(activity_group)[T.Screen-Based]']),
+        stars(happiness_model.pvalues['C(social_context)[T.With Others]']),
+        stars(happiness_model.pvalues['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']),
+        stars(stress_model.pvalues['C(activity_group)[T.Screen-Based]']),
+        stars(stress_model.pvalues['C(social_context)[T.With Others]']),
+        stars(stress_model.pvalues['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]'])
+    ],
+    'mixed_coef': [
+        mixed_happy_result.params['C(activity_group)[T.Screen-Based]'],
+        mixed_happy_result.params['C(social_context)[T.With Others]'],
+        mixed_happy_result.params['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]'],
+        mixed_stress_result.params['C(activity_group)[T.Screen-Based]'],
+        mixed_stress_result.params['C(social_context)[T.With Others]'],
+        mixed_stress_result.params['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']
+    ],
+    'mixed_p': [
+        mixed_happy_result.pvalues['C(activity_group)[T.Screen-Based]'],
+        mixed_happy_result.pvalues['C(social_context)[T.With Others]'],
+        mixed_happy_result.pvalues['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]'],
+        mixed_stress_result.pvalues['C(activity_group)[T.Screen-Based]'],
+        mixed_stress_result.pvalues['C(social_context)[T.With Others]'],
+        mixed_stress_result.pvalues['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']
+    ],
+    'mixed_sig': [
+        stars(mixed_happy_result.pvalues['C(activity_group)[T.Screen-Based]']),
+        stars(mixed_happy_result.pvalues['C(social_context)[T.With Others]']),
+        stars(mixed_happy_result.pvalues['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']),
+        stars(mixed_stress_result.pvalues['C(activity_group)[T.Screen-Based]']),
+        stars(mixed_stress_result.pvalues['C(social_context)[T.With Others]']),
+        stars(mixed_stress_result.pvalues['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]'])
+    ]
+})
+
+print("\nMAIN RESULTS TABLE")
+print(results_table)
+
+results_table.to_csv("/Users/farangizakhadova/Downloads/model_results_for_sheets.csv", index=False)
+
+# ---------- optional: nicely formatted text version ----------
+formatted_table = pd.DataFrame({
+    'Result': results_table['result'],
+    'WLS + clustered SE': [
+        f"{coef:.3f} (p {format_p(p)}) {sig}"
+        for coef, p, sig in zip(results_table['wls_coef'], results_table['wls_p'], results_table['wls_sig'])
+    ],
+    'Mixed-effects model': [
+        f"{coef:.3f} (p {format_p(p)}) {sig}"
+        for coef, p, sig in zip(results_table['mixed_coef'], results_table['mixed_p'], results_table['mixed_sig'])
+    ]
+})
+
+print("\nFORMATTED TABLE")
+print(formatted_table)
+
+formatted_table.to_csv("/Users/farangizakhadova/Downloads/model_results_formatted_for_sheets.csv", index=False)
+
+
+print(happiness_model.aic)
+print(stress_model.aic)
+print(mixed_happy_result.aic)
+print(mixed_stress_result.aic)
+
+print(happiness_model.bic)
+print(stress_model.bic)
+print(mixed_happy_result.bic)
+
+print(happiness_model.llf)
+print(stress_model.llf)
+print(mixed_happy_result.llf)
+print(mixed_stress_result.llf)
+
+print(happiness_model.rsquared)
+print(stress_model.rsquared)
+print(mixed_happy_marginal_r2)
+print(mixed_stress_marginal_r2)
+print(happiness_model.rsquared_adj)
+print(stress_model.rsquared_adj)
+print(mixed_happy_conditional_r2)
+print(mixed_stress_conditional_r2)
+
