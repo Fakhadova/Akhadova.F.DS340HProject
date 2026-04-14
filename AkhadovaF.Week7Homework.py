@@ -110,7 +110,6 @@ analysis_df['social_context'] = analysis_df['is_alone'].replace({
     False: 'With Others'
 })
 
-<<<<<<< HEAD
 #Check how many activity episodes each respondent contributes
 rows_per_person = analysis_df.groupby('tucaseid').size()
 
@@ -133,8 +132,6 @@ print("Number of rows from respondents with more than 1 row:", rows_from_repeat_
 print("Proportion of rows from repeated respondents:",
       rows_from_repeat_people / len(analysis_df))
 
-=======
->>>>>>> 2b92d61 (project progress 4/6)
 #project progress (3/30) - Descriptive tables + weighted results
 #sample description 
 
@@ -244,11 +241,8 @@ analysis_df['telfs'] = analysis_df['telfs'].astype('category')
 happiness_model = smf.wls(
     formula='wuhappy ~ C(activity_group) * C(social_context) + teage + C(tesex) + C(telfs)',
     data=analysis_df,
-<<<<<<< HEAD
     weights=analysis_df['wufnactwtp']
-=======
     weights=analysis_df['wufnactwt']
->>>>>>> 2b92d61 (project progress 4/6)
 ).fit(
     cov_type='cluster',
     cov_kwds={'groups': analysis_df['tucaseid']}
