@@ -17,19 +17,15 @@ This project uses pooled ATUS data from 2010, 2012, and 2013, including:
 Source: U.S. Bureau of Labor Statistics, American Time Use Survey (ATUS).
 
 ## Repository Contents
-- `Poster Draft 2 - Farangiz Akhadova.pdf` — most recent poster draft
+- `Poster Draft - Farangiz Akhadova.pdf` — most recent poster draft
 - `main_analysis.py` — main Python analysis file
 - `README.md` — project overview and repository guide
-- `data/` — raw ATUS files used in the analysis and a small sample of the cleaned analytic dataset
+- `atus_analysis_sample.csv` — small sample of the cleaned analytic dataset
 
-## Data Folder
-The `data/` folder contains:
-- activity files for 2010, 2012, and 2013
-- Well-Being Module activity data
-- respondent files for 2010, 2012, and 2013
-- roster files for 2010, 2012, and 2013
-- Who files for 2010, 2012, and 2013
-- a small sample of the cleaned analytic dataset
+## Data Access
+The full ATUS raw files used in this project were too large to upload to GitHub. This repository includes a small sample of the cleaned analytic dataset to show the project structure and variables used in the analysis.
+
+The analysis code uses ATUS activity, Well-Being Module activity, respondent, roster, and Who files from 2010, 2012, and 2013. These files can be downloaded from the U.S. Bureau of Labor Statistics ATUS website and then used with the script by updating the file paths if needed.
 
 ## Methods Summary
 - merged ATUS activity, well-being, respondent, roster, and Who files
@@ -47,8 +43,13 @@ The `data/` folder contains:
 - stress results were weaker and less consistent across models
 
 ## How to Run
-Download the required ATUS files and update the file paths in the Python script if needed. Then run:
+1. Download the ATUS files used in the analysis.
+2. Update file paths in `main_analysis.py` if needed.
+3. Run `main_analysis.py`.
 
-`main_analysis.py`
+The script produces descriptive tables, model results, and figures used in the poster.
 
-The script produces descriptive tables, model output, and figures used in the poster.
+## Author
+Farangiz Akhadova  
+Wellesley College  
+Data Science Major Capstone
