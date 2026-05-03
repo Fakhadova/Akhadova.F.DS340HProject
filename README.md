@@ -17,7 +17,7 @@ This project uses pooled ATUS data from 2010, 2012, and 2013, including:
 Source: U.S. Bureau of Labor Statistics, American Time Use Survey (ATUS).
 
 ## Repository Contents
-- `Poster Draft - Farangiz Akhadova.pdf` - most recent poster draft
+- `Final Draft - Farangiz Akhadova.pdf` - final poster
 - `main_analysis.py` - main Python analysis file
 - `README.md` - project overview and repository guide
 - `atus_analysis_sample.csv` - small sample of the cleaned analytic dataset
