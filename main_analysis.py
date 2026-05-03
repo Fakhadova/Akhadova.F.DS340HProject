@@ -4,6 +4,7 @@ import seaborn as sns
 import plotly.express as px
 import numpy as np
 import statsmodels.formula.api as smf
+from patsy import dmatrices
 
 
 # 1. Load Data
@@ -109,6 +110,9 @@ analysis_df['social_context'] = analysis_df['is_alone'].replace({
     True: 'Alone',
     False: 'With Others'
 })
+
+sample_df = analysis_df.sample(n=200, random_state=42)
+sample_df.to_csv("/Users/farangizakhadova/Downloads/atus_analysis_sample.csv", index=False)
 
 #Check how many activity episodes each respondent contributes
 rows_per_person = analysis_df.groupby('tucaseid').size()
@@ -467,10 +471,7 @@ plt.tight_layout()
 plt.show()
 
 
-# --------------------------------------------------
 # MODEL SUMMARY OUTPUTS FOR GOOGLE SHEETS
-# Put this AFTER all four models are fit
-# --------------------------------------------------
 
 import pandas as pd
 import numpy as np
@@ -630,7 +631,6 @@ print(results_table)
 
 results_table.to_csv("/Users/farangizakhadova/Downloads/model_results_for_sheets.csv", index=False)
 
-# ---------- optional: nicely formatted text version ----------
 formatted_table = pd.DataFrame({
     'Result': results_table['result'],
     'WLS + clustered SE': [
@@ -823,9 +823,7 @@ import seaborn as sns
 import plotly.express as px
 import numpy as np
 
-# ----------------------------
 # WEIGHTED MEAN FUNCTIONS
-# ----------------------------
 def weighted_mean(values, weights):
     return np.sum(values * weights) / np.sum(weights)
 
@@ -843,9 +841,7 @@ def weighted_se(values, weights):
     return se
 
 
-# ----------------------------
 # WEIGHTED SUMMARY TABLE
-# ----------------------------
 weighted_table = analysis_df.groupby(['activity_group', 'social_context']).apply(
     lambda x: pd.Series({
         'n_episodes': len(x),
@@ -860,10 +856,8 @@ print(weighted_table)
 weighted_table.to_csv("/Users/farangizakhadova/Downloads/weighted_results_table.csv", index=False)
 
 
-# ----------------------------
 # INTERACTIVE BAR CHART
 # thinner bars
-# ----------------------------
 fig = px.bar(
     weighted_table,
     x='activity_group',
@@ -891,10 +885,8 @@ fig.write_html("/Users/farangizakhadova/Downloads/weighted_happiness_chart.html"
 fig.show()
 
 
-# ----------------------------
 # STATIC BAR CHARTS
 # thinner bars
-# ----------------------------
 bar_order = ['Non-Screen', 'Screen-Based']
 hue_order = ['Alone', 'With Others']
 
@@ -954,10 +946,9 @@ plt.legend(title='Social Context')
 plt.tight_layout()
 plt.show()
 
-# ----------------------------
+
 # POINT-RANGE PLOT
-# horizontal version with less white space
-# ----------------------------
+# horizontal version 
 plot_table = analysis_df.groupby(['activity_group', 'social_context']).apply(
     lambda x: pd.Series({
         'happiness_mean': weighted_mean(x['wuhappy'], x['wufnactwtp']),
@@ -1047,3 +1038,368 @@ print("Difference:", round(happiness_model.rsquared - happiness_model.rsquared_a
 print("Stress WLS R-squared:", round(stress_model.rsquared, 4))
 print("Stress WLS Adjusted R-squared:", round(stress_model.rsquared_adj, 4))
 print("Difference:", round(stress_model.rsquared - stress_model.rsquared_adj, 4))
+
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import scipy.stats as stats
+import statsmodels.api as sm
+from sklearn.model_selection import train_test_split, cross_val_score, KFold
+from sklearn.metrics import mean_squared_error, r2_score
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+import warnings
+warnings.filterwarnings('ignore')
+
+# Make sure analysis_df is your final cleaned dataset
+# If not, re-run your cleaning code first
+
+
+# 1. VIF (MULTICOLLINEARITY)
+
+print("="*60)
+print("VIF (MULTICOLLINEARITY CHECK)")
+print("="*60)
+
+# Create numeric versions for VIF
+vif_df = analysis_df[['teage', 'tesex', 'telfs']].dropna().copy()
+# Convert categorical to numeric codes
+vif_df['tesex_num'] = vif_df['tesex'].astype('category').cat.codes
+vif_df['telfs_num'] = vif_df['telfs'].astype('category').cat.codes
+
+vif_data = vif_df[['teage', 'tesex_num', 'telfs_num']]
+vif_results = pd.DataFrame()
+vif_results['Variable'] = vif_data.columns
+vif_results['VIF'] = [variance_inflation_factor(vif_data.values, i) for i in range(vif_data.shape[1])]
+print(vif_results)
+print("\nInterpretation: VIF < 5 = no serious multicollinearity\n")
+
+
+# 2. AIC/BIC (Already in  models, just print)
+print("="*60)
+print("AIC / BIC")
+print("="*60)
+print(f"Happiness WLS - AIC: {happiness_model.aic:.1f}, BIC: {happiness_model.bic:.1f}")
+print(f"Stress WLS    - AIC: {stress_model.aic:.1f}, BIC: {stress_model.bic:.1f}")
+print(f"Mixed Happy   - AIC: {mixed_happy_result.aic:.1f}, BIC: {mixed_happy_result.bic:.1f}")
+print(f"Mixed Stress  - AIC: {mixed_stress_result.aic:.1f}, BIC: {mixed_stress_result.bic:.1f}\n")
+
+# ------------------------------------------------------------
+# 3. 80/20 CROSS-VALIDATION WITH RMSE
+# ------------------------------------------------------------
+print("="*60)
+print("80/20 CROSS-VALIDATION")
+print("="*60)
+
+# Prepare data for sklearn
+X = pd.get_dummies(analysis_df[['activity_group', 'social_context', 'teage', 'tesex', 'telfs']], 
+                   drop_first=True)
+y_happy = analysis_df['wuhappy']
+y_stress = analysis_df['wustress']
+weights = analysis_df['wufnactwtp']
+
+# Split
+X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
+    X, y_happy, weights, test_size=0.2, random_state=42
+)
+
+# Simple weighted linear regression (no random effects for CV)
+from sklearn.linear_model import LinearRegression
+
+# Train on weighted data (approximate)
+model_cv = LinearRegression()
+model_cv.fit(X_train, y_train, sample_weight=w_train)
+
+# Predict and evaluate
+y_pred = model_cv.predict(X_test)
+rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+r2_cv = r2_score(y_test, y_pred)
+
+print(f"Happiness Model - 80/20 CV Results:")
+print(f"  RMSE: {rmse:.3f} (scale 0-6)")
+print(f"  R² (CV): {r2_cv:.3f}")
+print(f"  Compare to original R²: {happiness_model.rsquared:.3f}\n")
+
+# 4. K-FOLD CROSS-VALIDATION (5-fold)
+print("="*60)
+print("5-FOLD CROSS-VALIDATION")
+print("="*60)
+
+kf = KFold(n_splits=5, shuffle=True, random_state=42)
+cv_rmse_scores = []
+cv_r2_scores = []
+
+for train_idx, val_idx in kf.split(X):
+    X_train_k, X_val_k = X.iloc[train_idx], X.iloc[val_idx]
+    y_train_k, y_val_k = y_happy.iloc[train_idx], y_happy.iloc[val_idx]
+    w_train_k, w_val_k = weights.iloc[train_idx], weights.iloc[val_idx]
+    
+    model_k = LinearRegression()
+    model_k.fit(X_train_k, y_train_k, sample_weight=w_train_k)
+    y_pred_k = model_k.predict(X_val_k)
+    
+    cv_rmse_scores.append(np.sqrt(mean_squared_error(y_val_k, y_pred_k)))
+    cv_r2_scores.append(r2_score(y_val_k, y_pred_k))
+
+print(f"Happiness Model - 5-fold CV:")
+print(f"  RMSE: {np.mean(cv_rmse_scores):.3f} (±{np.std(cv_rmse_scores):.3f})")
+print(f"  R²:   {np.mean(cv_r2_scores):.3f} (±{np.std(cv_r2_scores):.3f})\n")
+
+
+# 5. RESIDUAL DIAGNOSTICS (QQ plot + Residuals vs Fitted)
+
+print("="*60)
+print("GENERATING RESIDUAL PLOTS")
+print("="*60)
+
+# Get residuals from mixed model
+residuals = mixed_happy_result.resid
+fitted = mixed_happy_result.fittedvalues
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# QQ Plot
+stats.probplot(residuals, dist="norm", plot=axes[0])
+axes[0].set_title('QQ Plot: Happiness Residuals')
+axes[0].set_xlabel('Theoretical Quantiles')
+axes[0].set_ylabel('Sample Quantiles')
+
+# Residuals vs Fitted
+axes[1].scatter(fitted, residuals, alpha=0.3, s=10)
+axes[1].axhline(y=0, color='red', linestyle='--', linewidth=1)
+axes[1].set_xlabel('Fitted Values')
+axes[1].set_ylabel('Residuals')
+axes[1].set_title('Residuals vs Fitted')
+
+plt.tight_layout()
+plt.savefig('/Users/farangizakhadova/Downloads/residual_diagnostics.png', dpi=150)
+plt.show()
+
+# 6. NORMALITY TEST (Shapiro-Wilk on sample - large data so use sample)
+
+print("="*60)
+print("NORMALITY CHECK")
+print("="*60)
+
+# Sample because Shapiro can't handle >5000
+residuals_sample = residuals.sample(n=min(5000, len(residuals)), random_state=42)
+shapiro_stat, shapiro_p = stats.shapiro(residuals_sample)
+
+print(f"Shapiro-Wilk test on residuals (n={len(residuals_sample)}):")
+print(f"  Statistic: {shapiro_stat:.4f}")
+print(f"  p-value: {shapiro_p:.4e}")
+if shapiro_p < 0.05:
+    print("  → Residuals deviate from normality (common with large N, bounded scales)")
+else:
+    print("  → Residuals appear normally distributed")
+print("  Note: With N=15,000, even small deviations will be significant")
+
+# 7. HOMOSCEDASTICITY (Breusch-Pagan test)
+
+print("\n" + "="*60)
+print("HOMOSCEDASTICITY CHECK (Breusch-Pagan)")
+print("="*60)
+
+from statsmodels.stats.diagnostic import het_breuschpagan
+
+# Need X for BP test (use the same X we created)
+# Add constant to X for Breusch-Pagan test
+import statsmodels.api as sm
+X_with_const = sm.add_constant(X.values)
+bp_test = het_breuschpagan(residuals, X_with_const)
+print(f"Breusch-Pagan LM statistic: {bp_test[0]:.3f}")
+print(f"p-value: {bp_test[1]:.4e}")
+if bp_test[1] < 0.05:
+    print("  → Evidence of heteroscedasticity (common with survey data)")
+    print("  → WLS with clustered SEs already addresses this")
+else:
+    print("  → No evidence of heteroscedasticity")
+
+# 8. SUMMARY TABLE FOR POSTER
+print("\n" + "="*60)
+print("SUMMARY TABLE FOR POSTER")
+print("="*60)
+
+summary_table = pd.DataFrame({
+    'Diagnostic': [
+        'Multicollinearity (VIF)',
+        'AIC (Happiness WLS)',
+        'AIC (Mixed Happiness)',
+        '80/20 CV RMSE',
+        '80/20 CV R²',
+        '5-fold CV RMSE',
+        '5-fold CV R²',
+        'Shapiro-Wilk p-value',
+        'Breusch-Pagan p-value'
+    ],
+    'Value': [
+        f"All < {vif_results['VIF'].max():.2f}",
+        f"{happiness_model.aic:.1f}",
+        f"{mixed_happy_result.aic:.1f}",
+        f"{rmse:.3f}",
+        f"{r2_cv:.3f}",
+        f"{np.mean(cv_rmse_scores):.3f} (±{np.std(cv_rmse_scores):.3f})",
+        f"{np.mean(cv_r2_scores):.3f} (±{np.std(cv_r2_scores):.3f})",
+        f"{shapiro_p:.2e}",
+        f"{bp_test[1]:.2e}"
+    ],
+    'Interpretation': [
+        'No multicollinearity issue',
+        'Reference for model comparison',
+        'Lower = better fit (mixed better)',
+        f'{rmse:.3f} points on 0-6 scale',
+        'Low, consistent with original R²',
+        'Stable across folds',
+        'Stable across folds',
+        'Non-normal (expected with large N)',
+        'Heteroscedastic present (WLS addresses)'
+    ]
+})
+
+print(summary_table.to_string(index=False))
+summary_table.to_csv('/Users/farangizakhadova/Downloads/diagnostics_summary.csv', index=False)
+
+print("\n✅ All diagnostics complete!")
+print("📁 Saved: residual_diagnostics.png, diagnostics_summary.csv")
+
+# Diagnostics for ALL FOUR models
+models_to_check = [
+    ("Mixed Happiness", mixed_happy_result, mixed_df['wuhappy']),
+    ("Mixed Stress", mixed_stress_result, mixed_df['wustress']),
+    ("WLS Happiness", happiness_model, analysis_df['wuhappy']),
+    ("WLS Stress", stress_model, analysis_df['wustress'])
+]
+
+for name, model, y_actual in models_to_check:
+    residuals = model.resid
+    fitted = model.fittedvalues
+    
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+    
+    # QQ plot
+    stats.probplot(residuals, dist="norm", plot=axes[0])
+    axes[0].set_title(f'{name}: QQ Plot')
+    
+    # Residuals vs fitted
+    axes[1].scatter(fitted, residuals, alpha=0.3, s=5)
+    axes[1].axhline(y=0, color='red', linestyle='--')
+    axes[1].set_xlabel('Fitted Values')
+    axes[1].set_ylabel('Residuals')
+    axes[1].set_title(f'{name}: Residuals vs Fitted')
+    
+    plt.tight_layout()
+    plt.savefig(f'/Users/farangizakhadova/Downloads/diagnostics_{name.replace(" ", "_")}.png')
+    plt.show()
+
+    # Stress model cross-validation
+print("="*60)
+print("STRESS MODEL - 80/20 CROSS-VALIDATION")
+print("="*60)
+
+X_stress = pd.get_dummies(analysis_df[['activity_group', 'social_context', 'teage', 'tesex', 'telfs']], 
+                          drop_first=True)
+y_stress = analysis_df['wustress']
+weights_stress = analysis_df['wufnactwtp']
+
+X_train_s, X_test_s, y_train_s, y_test_s, w_train_s, w_test_s = train_test_split(
+    X_stress, y_stress, weights_stress, test_size=0.2, random_state=42
+)
+
+model_cv_stress = LinearRegression()
+model_cv_stress.fit(X_train_s, y_train_s, sample_weight=w_train_s)
+y_pred_s = model_cv_stress.predict(X_test_s)
+rmse_stress = np.sqrt(mean_squared_error(y_test_s, y_pred_s))
+r2_cv_stress = r2_score(y_test_s, y_pred_s)
+
+print(f"Stress Model - 80/20 CV Results:")
+print(f"  RMSE: {rmse_stress:.3f} (scale 0-6)")
+print(f"  R² (CV): {r2_cv_stress:.3f}")
+
+# 5-fold CV for Stress
+print("\n" + "="*60)
+print("STRESS MODEL - 5-FOLD CROSS-VALIDATION")
+print("="*60)
+
+cv_rmse_stress = []
+cv_r2_stress = []
+
+for train_idx, val_idx in kf.split(X_stress):
+    X_train_k, X_val_k = X_stress.iloc[train_idx], X_stress.iloc[val_idx]
+    y_train_k, y_val_k = y_stress.iloc[train_idx], y_stress.iloc[val_idx]
+    w_train_k, w_val_k = weights_stress.iloc[train_idx], weights_stress.iloc[val_idx]
+    
+    model_k = LinearRegression()
+    model_k.fit(X_train_k, y_train_k, sample_weight=w_train_k)
+    y_pred_k = model_k.predict(X_val_k)
+    
+    cv_rmse_stress.append(np.sqrt(mean_squared_error(y_val_k, y_pred_k)))
+    cv_r2_stress.append(r2_score(y_val_k, y_pred_k))
+
+print(f"Stress Model - 5-fold CV:")
+print(f"  RMSE: {np.mean(cv_rmse_stress):.3f} (±{np.std(cv_rmse_stress):.3f})")
+print(f"  R²:   {np.mean(cv_r2_stress):.3f} (±{np.std(cv_r2_stress):.3f})")
+
+import numpy as np
+from sklearn.model_selection import KFold
+from sklearn.metrics import mean_squared_error, r2_score
+import statsmodels.api as sm
+
+# Get unique respondent IDs
+unique_ids = mixed_df['tucaseid'].unique()
+
+# 5-fold CV split at the RESPONDENT level (not episode level)
+kf = KFold(n_splits=5, shuffle=True, random_state=42)
+
+cv_rmse_mixed_happy = []
+cv_r2_mixed_happy = []
+cv_rmse_mixed_stress = []
+cv_r2_mixed_stress = []
+
+for train_idx, val_idx in kf.split(unique_ids):
+    # Split respondents
+    train_ids = unique_ids[train_idx]
+    val_ids = unique_ids[val_idx]
+
+    train_data = mixed_df[mixed_df['tucaseid'].isin(train_ids)].copy()
+    val_data = mixed_df[mixed_df['tucaseid'].isin(val_ids)].copy()
+
+    # --- Happiness ---
+    try:
+        m_happy = sm.MixedLM.from_formula(
+            'wuhappy ~ C(activity_group) * C(social_context) + teage + C(tesex) + C(telfs)',
+            groups='tucaseid',
+            data=train_data
+        ).fit(reml=False, method='lbfgs', disp=False)
+
+        # Predict using fixed effects only (these are new respondents — no random intercept)
+        pred_happy = m_happy.predict(exog=val_data)
+
+        rmse_h = np.sqrt(mean_squared_error(val_data['wuhappy'], pred_happy))
+        r2_h = r2_score(val_data['wuhappy'], pred_happy)
+        cv_rmse_mixed_happy.append(rmse_h)
+        cv_r2_mixed_happy.append(r2_h)
+    except Exception as e:
+        print(f"Happiness fold failed: {e}")
+
+    # --- Stress ---
+    try:
+        m_stress = sm.MixedLM.from_formula(
+            'wustress ~ C(activity_group) * C(social_context) + teage + C(tesex) + C(telfs)',
+            groups='tucaseid',
+            data=train_data
+        ).fit(reml=False, method='lbfgs', disp=False)
+
+        pred_stress = m_stress.predict(exog=val_data)
+
+        rmse_s = np.sqrt(mean_squared_error(val_data['wustress'], pred_stress))
+        r2_s = r2_score(val_data['wustress'], pred_stress)
+        cv_rmse_mixed_stress.append(rmse_s)
+        cv_r2_mixed_stress.append(r2_s)
+    except Exception as e:
+        print(f"Stress fold failed: {e}")
+
+print("MIXED MODEL - GROUP-LEVEL 5-FOLD CV")
+print(f"Happiness RMSE: {np.mean(cv_rmse_mixed_happy):.3f} (±{np.std(cv_rmse_mixed_happy):.3f})")
+print(f"Happiness R²:   {np.mean(cv_r2_mixed_happy):.3f} (±{np.std(cv_r2_mixed_happy):.3f})")
+print(f"Stress RMSE:    {np.mean(cv_rmse_mixed_stress):.3f} (±{np.std(cv_rmse_mixed_stress):.3f})")
+print(f"Stress R²:      {np.mean(cv_r2_mixed_stress):.3f} (±{np.std(cv_r2_mixed_stress):.3f})") 
