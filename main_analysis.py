@@ -274,14 +274,40 @@ with open("/Users/farangizakhadova/Downloads/happiness_model_summary.txt", "w") 
 with open("/Users/farangizakhadova/Downloads/stress_model_summary.txt", "w") as f:
     f.write(stress_model.summary().as_text())
 
-#happiness pattern still looks more meaningful than the stress pattern. 
-#In the happiness model, being with others is associated with a 0.554-point increase in happiness than being alone
-#That result was statistically significant
-#The interaction between screen-based leisure and being with others is -0.266 and also statistically significant (p = .020)
-#in the stress model, the interaction is very small (0.029) and not statistically significant (p = .776)
+# UNWEIGHTED MODELS WITH CLUSTERED STANDARD ERRORS
+# This is the extra sensitivity check your professor suggested.
+# It keeps clustered SEs but removes the ATUS weights.
+# That helps separate the weights/no-weights decision from the clustered-SE/mixed-effects decision.
+happiness_ols_cluster = smf.ols(
+    formula='wuhappy ~ C(activity_group) * C(social_context) + teage + C(tesex) + C(telfs)',
+    data=analysis_df
+).fit(
+    cov_type='cluster',
+    cov_kwds={'groups': analysis_df['tucaseid']}
+)
 
-#new numbers are 4.090 and 4.785
+stress_ols_cluster = smf.ols(
+    formula='wustress ~ C(activity_group) * C(social_context) + teage + C(tesex) + C(telfs)',
+    data=analysis_df
+).fit(
+    cov_type='cluster',
+    cov_kwds={'groups': analysis_df['tucaseid']}
+)
 
+print("\nUNWEIGHTED OLS + CLUSTERED SE RESULTS: HAPPINESS")
+print(happiness_ols_cluster.summary())
+
+print("\nUNWEIGHTED OLS + CLUSTERED SE RESULTS: STRESS")
+print(stress_ols_cluster.summary())
+
+with open("/Users/farangizakhadova/Downloads/happiness_unweighted_clustered_summary.txt", "w") as f:
+    f.write(happiness_ols_cluster.summary().as_text())
+
+with open("/Users/farangizakhadova/Downloads/stress_unweighted_clustered_summary.txt", "w") as f:
+    f.write(stress_ols_cluster.summary().as_text())
+
+# The weighted WLS model should stay as the main population-level model.
+# The unweighted clustered model is only a sensitivity check.
 
 import statsmodels.api as sm
 
@@ -369,6 +395,53 @@ print(comparison_table)
 
 #Save it in case you want to use it in the write-up
 comparison_table.to_csv("/Users/farangizakhadova/Downloads/model_comparison_table.csv", index=False)
+
+# SENSITIVITY TABLE: WEIGHTED VS. UNWEIGHTED VS. MIXED
+# This is the table to check whether differences are mainly about weights or model structure.
+def fmt_model_result(model, term):
+    return f"{model.params[term]:+.3f} (p = {model.pvalues[term]:.3f})"
+
+def fmt_mixed_result(model, term):
+    return f"{model.params[term]:+.3f} (p = {model.pvalues[term]:.3f})"
+
+sensitivity_table = pd.DataFrame({
+    'Outcome / Term': [
+        'Happiness: Screen-Based',
+        'Happiness: With Others',
+        'Happiness: Screen × Others',
+        'Stress: Screen-Based',
+        'Stress: With Others',
+        'Stress: Screen × Others'
+    ],
+    'Weighted WLS + clustered SE': [
+        fmt_model_result(happiness_model, 'C(activity_group)[T.Screen-Based]'),
+        fmt_model_result(happiness_model, 'C(social_context)[T.With Others]'),
+        fmt_model_result(happiness_model, 'C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]'),
+        fmt_model_result(stress_model, 'C(activity_group)[T.Screen-Based]'),
+        fmt_model_result(stress_model, 'C(social_context)[T.With Others]'),
+        fmt_model_result(stress_model, 'C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]')
+    ],
+    'Unweighted OLS + clustered SE': [
+        fmt_model_result(happiness_ols_cluster, 'C(activity_group)[T.Screen-Based]'),
+        fmt_model_result(happiness_ols_cluster, 'C(social_context)[T.With Others]'),
+        fmt_model_result(happiness_ols_cluster, 'C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]'),
+        fmt_model_result(stress_ols_cluster, 'C(activity_group)[T.Screen-Based]'),
+        fmt_model_result(stress_ols_cluster, 'C(social_context)[T.With Others]'),
+        fmt_model_result(stress_ols_cluster, 'C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]')
+    ],
+    'Mixed-effects': [
+        fmt_mixed_result(mixed_happy_result, 'C(activity_group)[T.Screen-Based]'),
+        fmt_mixed_result(mixed_happy_result, 'C(social_context)[T.With Others]'),
+        fmt_mixed_result(mixed_happy_result, 'C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]'),
+        fmt_mixed_result(mixed_stress_result, 'C(activity_group)[T.Screen-Based]'),
+        fmt_mixed_result(mixed_stress_result, 'C(social_context)[T.With Others]'),
+        fmt_mixed_result(mixed_stress_result, 'C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]')
+    ]
+})
+
+print("\nSENSITIVITY TABLE: WEIGHTED VS. UNWEIGHTED VS. MIXED")
+print(sensitivity_table)
+sensitivity_table.to_csv("/Users/farangizakhadova/Downloads/weighted_unweighted_mixed_sensitivity_table.csv", index=False)
 
 # ONE GRAPHIC: point-range plot with two side-by-side panels
 # Put this after weighted_table is created
@@ -675,7 +748,8 @@ print(mixed_stress_conditional_r2)
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# Create age groups
+# FIGURE 1: BAR CHART OF AGE GROUPS
+# This version uses bars instead of a lollipop chart so the figure uses space more efficiently.
 analysis_df['age_group'] = pd.cut(
     analysis_df['teage'],
     bins=[15, 24, 34, 44, 54, 64, 74, 85],
@@ -685,12 +759,27 @@ analysis_df['age_group'] = pd.cut(
 
 age_counts = analysis_df['age_group'].value_counts().sort_index()
 
-plt.figure(figsize=(8,5))
-plt.bar(age_counts.index.astype(str), age_counts.values)
+plt.figure(figsize=(8, 5))
+ax = plt.gca()
+bars = ax.bar(age_counts.index.astype(str), age_counts.values, width=0.65)
+
+for bar in bars:
+    height = bar.get_height()
+    ax.text(
+        bar.get_x() + bar.get_width() / 2,
+        height + 80,
+        f"{int(height):,}",
+        ha='center',
+        va='bottom',
+        fontsize=9
+    )
+
 plt.title('Age Group Distribution')
 plt.xlabel('Age Group')
 plt.ylabel('Number of Episodes')
+plt.ylim(0, age_counts.max() * 1.15)
 plt.tight_layout()
+plt.savefig('/Users/farangizakhadova/Downloads/figure1_age_group_bar_chart.png', dpi=300, bbox_inches='tight')
 plt.show()
 
 import pandas as pd
@@ -773,16 +862,15 @@ plt.title('Main Coefficients from WLS and Mixed-Effects Models')
 plt.legend()
 plt.tight_layout()
 plt.show()
-# Count episodes in each group
+# FIGURE 2: BAR CHART OF THE FOUR COMPARISON GROUPS
+# This version uses bars instead of a lollipop chart so there is less empty white space.
 group_counts = analysis_df.groupby(['activity_group', 'social_context']).size().reset_index(name='n')
 
-# Convert to strings before combining
 group_counts['group_label'] = (
     group_counts['activity_group'].astype(str) + "\n" +
     group_counts['social_context'].astype(str)
 )
 
-# Order the groups
 order = [
     'Non-Screen\nAlone',
     'Non-Screen\nWith Others',
@@ -798,23 +886,27 @@ group_counts['group_label'] = pd.Categorical(
 
 group_counts = group_counts.sort_values('group_label')
 
-plt.figure(figsize=(8,5))
+plt.figure(figsize=(8, 5))
+ax = plt.gca()
+bars = ax.bar(group_counts['group_label'].astype(str), group_counts['n'], width=0.62)
 
-plt.hlines(
-    y=group_counts['group_label'],
-    xmin=0,
-    xmax=group_counts['n']
-)
-
-plt.plot(group_counts['n'], group_counts['group_label'], 'o')
-
-for _, row in group_counts.iterrows():
-    plt.text(row['n'] + 60, row['group_label'], f"{row['n']:,}", va='center')
+for bar in bars:
+    height = bar.get_height()
+    ax.text(
+        bar.get_x() + bar.get_width() / 2,
+        height + 120,
+        f"{int(height):,}",
+        ha='center',
+        va='bottom',
+        fontsize=9
+    )
 
 plt.title('Distribution of Episodes Across the Four Comparison Groups')
-plt.xlabel('Number of Episodes')
-plt.ylabel('')
+plt.xlabel('Activity Type and Social Context')
+plt.ylabel('Number of Episodes')
+plt.ylim(0, group_counts['n'].max() * 1.15)
 plt.tight_layout()
+plt.savefig('/Users/farangizakhadova/Downloads/figure2_group_counts_bar_chart.png', dpi=300, bbox_inches='tight')
 plt.show()
 
 import pandas as pd
@@ -878,7 +970,8 @@ fig.update_traces(width=0.28)
 # a little more spacing for cleaner look
 fig.update_layout(
     bargap=0.45,
-    bargroupgap=0.18
+    bargroupgap=0.18,
+    legend=dict(x=1.02, y=1, xanchor='left', yanchor='top')
 )
 
 fig.write_html("/Users/farangizakhadova/Downloads/weighted_happiness_chart.html")
@@ -899,7 +992,7 @@ ax = sns.barplot(
     hue='social_context',
     order=bar_order,
     hue_order=hue_order,
-    ci=None
+    errorbar=None
 )
 
 # manually make bars thinner
@@ -914,8 +1007,19 @@ plt.title('Weighted Happiness by Activity Type and Social Context')
 plt.ylabel('Weighted Mean Happiness (0–6)')
 plt.xlabel('Activity Type')
 plt.ylim(0, 5.2)
-plt.legend(title='Social Context')
+plt.legend(
+    title='Social Context',
+    loc='upper right',
+    fontsize=8,
+    title_fontsize=8,
+    frameon=True,
+    framealpha=0.9,
+    borderpad=0.3,
+    labelspacing=0.25,
+    handlelength=1.0
+)
 plt.tight_layout()
+plt.savefig('/Users/farangizakhadova/Downloads/figure4_weighted_happiness_bar_chart.png', dpi=300, bbox_inches='tight')
 plt.show()
 
 # Plot 2: Weighted Stress
@@ -927,7 +1031,7 @@ ax = sns.barplot(
     hue='social_context',
     order=bar_order,
     hue_order=hue_order,
-    ci=None
+    errorbar=None
 )
 
 # manually make bars thinner
@@ -941,14 +1045,26 @@ for patch in ax.patches:
 plt.title('Weighted Stress by Activity Type and Social Context')
 plt.ylabel('Weighted Mean Stress (0–6)')
 plt.xlabel('Activity Type')
-plt.ylim(0, 1.3)
-plt.legend(title='Social Context')
+plt.ylim(0, 1.6)
+plt.legend(
+    title='Social Context',
+    loc='upper right',
+    fontsize=8,
+    title_fontsize=8,
+    frameon=True,
+    framealpha=0.9,
+    borderpad=0.3,
+    labelspacing=0.25,
+    handlelength=1.0
+)
 plt.tight_layout()
+plt.savefig('/Users/farangizakhadova/Downloads/figure5_weighted_stress_bar_chart.png', dpi=300, bbox_inches='tight')
 plt.show()
 
 
 # POINT-RANGE PLOT
-# horizontal version 
+# Horizontal version for Figure 3.
+# The intervals are approximate 95% confidence intervals around weighted means, not ranges of the full distribution.
 plot_table = analysis_df.groupby(['activity_group', 'social_context']).apply(
     lambda x: pd.Series({
         'happiness_mean': weighted_mean(x['wuhappy'], x['wufnactwtp']),
@@ -995,18 +1111,14 @@ axes[0].errorbar(
     capsize=4
 )
 axes[0].set_title('Happiness')
-axes[0].set_xlabel('Weighted Mean (0–6)')
+axes[0].set_xlabel('Weighted Mean with Approx. 95% CI (0–6)')
 axes[0].set_yticks(y)
 axes[0].set_yticklabels(plot_table['group_label'])
 axes[0].invert_yaxis()
 
 happy_min = (plot_table['happiness_mean'] - plot_table['happy_ci']).min()
 happy_max = (plot_table['happiness_mean'] + plot_table['happy_ci']).max()
-axes[0].set_xlim(happy_min - 0.12, happy_max + 0.18)
-
-for i, row in plot_table.iterrows():
-    label_x = row['happiness_mean'] + row['happy_ci'] + 0.02
-    axes[0].text(label_x, i, f"{row['happiness_mean']:.2f}", va='center')
+axes[0].set_xlim(happy_min - 0.12, happy_max + 0.12)
 
 # Stress panel
 axes[1].errorbar(
@@ -1017,15 +1129,11 @@ axes[1].errorbar(
     capsize=4
 )
 axes[1].set_title('Stress')
-axes[1].set_xlabel('Weighted Mean (0–6)')
+axes[1].set_xlabel('Weighted Mean with Approx. 95% CI (0–6)')
 
 stress_min = (plot_table['stress_mean'] - plot_table['stress_ci']).min()
 stress_max = (plot_table['stress_mean'] + plot_table['stress_ci']).max()
-axes[1].set_xlim(stress_min - 0.08, stress_max + 0.12)
-
-for i, row in plot_table.iterrows():
-    label_x = row['stress_mean'] + row['stress_ci'] + 0.01
-    axes[1].text(label_x, i, f"{row['stress_mean']:.2f}", va='center')
+axes[1].set_xlim(stress_min - 0.08, stress_max + 0.08)
 
 fig.suptitle('Weighted Mean Well-Being by Activity Type and Social Context', fontsize=14)
 plt.tight_layout()
@@ -1403,3 +1511,269 @@ print(f"Happiness RMSE: {np.mean(cv_rmse_mixed_happy):.3f} (±{np.std(cv_rmse_mi
 print(f"Happiness R²:   {np.mean(cv_r2_mixed_happy):.3f} (±{np.std(cv_r2_mixed_happy):.3f})")
 print(f"Stress RMSE:    {np.mean(cv_rmse_mixed_stress):.3f} (±{np.std(cv_rmse_mixed_stress):.3f})")
 print(f"Stress R²:      {np.mean(cv_r2_mixed_stress):.3f} (±{np.std(cv_r2_mixed_stress):.3f})") 
+# ============================================================
+# FINAL POSTER CV TABLE INCLUDING UNWEIGHTED CLUSTERED-SE MODEL
+# ============================================================
+# This section adds the unweighted clustered-SE sensitivity model to the CV table.
+# Important: clustered standard errors affect inference, not predictions.
+# So for CV, the unweighted clustered-SE model is evaluated as the same unweighted OLS prediction model.
+# The split is done at the respondent level so the same person is not in both train and validation data.
+
+from sklearn.model_selection import KFold
+from sklearn.metrics import mean_squared_error, r2_score
+
+cv_formula_happy = 'wuhappy ~ C(activity_group) * C(social_context) + teage + C(tesex) + C(telfs)'
+cv_formula_stress = 'wustress ~ C(activity_group) * C(social_context) + teage + C(tesex) + C(telfs)'
+
+unique_ids = analysis_df['tucaseid'].unique()
+kf_group = KFold(n_splits=5, shuffle=True, random_state=42)
+
+def grouped_cv_linear(data, formula, outcome, weighted=False):
+    cv_rmse = []
+    cv_r2 = []
+
+    for train_idx, val_idx in kf_group.split(unique_ids):
+        train_ids = unique_ids[train_idx]
+        val_ids = unique_ids[val_idx]
+
+        train_data = data[data['tucaseid'].isin(train_ids)].copy()
+        val_data = data[data['tucaseid'].isin(val_ids)].copy()
+
+        if weighted:
+            model = smf.wls(
+                formula=formula,
+                data=train_data,
+                weights=train_data['wufnactwtp']
+            ).fit()
+        else:
+            model = smf.ols(
+                formula=formula,
+                data=train_data
+            ).fit()
+
+        pred = model.predict(val_data)
+        rmse = np.sqrt(mean_squared_error(val_data[outcome], pred))
+        r2 = r2_score(val_data[outcome], pred)
+
+        cv_rmse.append(rmse)
+        cv_r2.append(r2)
+
+    return np.mean(cv_r2), np.std(cv_r2), np.mean(cv_rmse), np.std(cv_rmse)
+
+# Weighted WLS group-level CV
+wls_happy_cv_r2, wls_happy_cv_r2_sd, wls_happy_cv_rmse, wls_happy_cv_rmse_sd = grouped_cv_linear(
+    analysis_df,
+    cv_formula_happy,
+    'wuhappy',
+    weighted=True
+)
+
+wls_stress_cv_r2, wls_stress_cv_r2_sd, wls_stress_cv_rmse, wls_stress_cv_rmse_sd = grouped_cv_linear(
+    analysis_df,
+    cv_formula_stress,
+    'wustress',
+    weighted=True
+)
+
+# Unweighted clustered-SE sensitivity model group-level CV
+# The CV predictions come from unweighted OLS because clustered SEs do not change fitted values.
+unweighted_happy_cv_r2, unweighted_happy_cv_r2_sd, unweighted_happy_cv_rmse, unweighted_happy_cv_rmse_sd = grouped_cv_linear(
+    analysis_df,
+    cv_formula_happy,
+    'wuhappy',
+    weighted=False
+)
+
+unweighted_stress_cv_r2, unweighted_stress_cv_r2_sd, unweighted_stress_cv_rmse, unweighted_stress_cv_rmse_sd = grouped_cv_linear(
+    analysis_df,
+    cv_formula_stress,
+    'wustress',
+    weighted=False
+)
+
+# Mixed model CV values were calculated above using held-out respondents.
+# This table combines all model families for the poster.
+poster_cv_table = pd.DataFrame({
+    'Model': [
+        'Mixed Happiness',
+        'Mixed Stress',
+        'Weighted WLS Happiness',
+        'Weighted WLS Stress',
+        'Unweighted Clustered Happiness',
+        'Unweighted Clustered Stress'
+    ],
+    'Training R²': [
+        f"{mixed_happy_marginal_r2:.3f} (marg.)",
+        f"{mixed_stress_marginal_r2:.3f} (marg.)",
+        f"{happiness_model.rsquared:.3f}",
+        f"{stress_model.rsquared:.3f}",
+        f"{happiness_ols_cluster.rsquared:.3f}",
+        f"{stress_ols_cluster.rsquared:.3f}"
+    ],
+    'CV R² (mean)': [
+        f"{np.mean(cv_r2_mixed_happy):.3f}",
+        f"{np.mean(cv_r2_mixed_stress):.3f}",
+        f"{wls_happy_cv_r2:.3f}",
+        f"{wls_stress_cv_r2:.3f}",
+        f"{unweighted_happy_cv_r2:.3f}",
+        f"{unweighted_stress_cv_r2:.3f}"
+    ],
+    'CV RMSE (mean±SD)': [
+        f"{np.mean(cv_rmse_mixed_happy):.3f} ± {np.std(cv_rmse_mixed_happy):.3f}",
+        f"{np.mean(cv_rmse_mixed_stress):.3f} ± {np.std(cv_rmse_mixed_stress):.3f}",
+        f"{wls_happy_cv_rmse:.3f} ± {wls_happy_cv_rmse_sd:.3f}",
+        f"{wls_stress_cv_rmse:.3f} ± {wls_stress_cv_rmse_sd:.3f}",
+        f"{unweighted_happy_cv_rmse:.3f} ± {unweighted_happy_cv_rmse_sd:.3f}",
+        f"{unweighted_stress_cv_rmse:.3f} ± {unweighted_stress_cv_rmse_sd:.3f}"
+    ]
+})
+
+print("\n" + "="*60)
+print("FINAL POSTER CV TABLE INCLUDING UNWEIGHTED CLUSTERED-SE MODEL")
+print("="*60)
+print(poster_cv_table.to_string(index=False))
+
+poster_cv_table.to_csv(
+    '/Users/farangizakhadova/Downloads/poster_cv_table_with_unweighted_clustered.csv',
+    index=False
+)
+
+print("\nSaved: /Users/farangizakhadova/Downloads/poster_cv_table_with_unweighted_clustered.csv")
+
+
+# FIGURE 6: COEFFICIENT PLOT FOR ALL THREE MODELS
+# This figure compares the main activity/social-context coefficients across:
+# 1. Weighted WLS + clustered SE
+# 2. Unweighted clustered SE
+# 3. Mixed-effects model
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Build coefficient table
+coef_data = pd.DataFrame({
+    'term': [
+        'Screen-Based (Happiness)',
+        'With Others (Happiness)',
+        'Screen × Others (Happiness)',
+        'Screen-Based (Stress)',
+        'With Others (Stress)',
+        'Screen × Others (Stress)'
+    ],
+
+    # Weighted WLS coefficients and SEs
+    'weighted_coef': [
+        happiness_model.params['C(activity_group)[T.Screen-Based]'],
+        happiness_model.params['C(social_context)[T.With Others]'],
+        happiness_model.params['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]'],
+        stress_model.params['C(activity_group)[T.Screen-Based]'],
+        stress_model.params['C(social_context)[T.With Others]'],
+        stress_model.params['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']
+    ],
+    'weighted_se': [
+        happiness_model.bse['C(activity_group)[T.Screen-Based]'],
+        happiness_model.bse['C(social_context)[T.With Others]'],
+        happiness_model.bse['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]'],
+        stress_model.bse['C(activity_group)[T.Screen-Based]'],
+        stress_model.bse['C(social_context)[T.With Others]'],
+        stress_model.bse['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']
+    ],
+
+    # Unweighted clustered coefficients and SEs
+    'unweighted_coef': [
+        happiness_ols_cluster.params['C(activity_group)[T.Screen-Based]'],
+        happiness_ols_cluster.params['C(social_context)[T.With Others]'],
+        happiness_ols_cluster.params['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]'],
+        stress_ols_cluster.params['C(activity_group)[T.Screen-Based]'],
+        stress_ols_cluster.params['C(social_context)[T.With Others]'],
+        stress_ols_cluster.params['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']
+    ],
+    'unweighted_se': [
+        happiness_ols_cluster.bse['C(activity_group)[T.Screen-Based]'],
+        happiness_ols_cluster.bse['C(social_context)[T.With Others]'],
+        happiness_ols_cluster.bse['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]'],
+        stress_ols_cluster.bse['C(activity_group)[T.Screen-Based]'],
+        stress_ols_cluster.bse['C(social_context)[T.With Others]'],
+        stress_ols_cluster.bse['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']
+    ],
+
+    # Mixed-effects coefficients and SEs
+    'mixed_coef': [
+        mixed_happy_result.params['C(activity_group)[T.Screen-Based]'],
+        mixed_happy_result.params['C(social_context)[T.With Others]'],
+        mixed_happy_result.params['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]'],
+        mixed_stress_result.params['C(activity_group)[T.Screen-Based]'],
+        mixed_stress_result.params['C(social_context)[T.With Others]'],
+        mixed_stress_result.params['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']
+    ],
+    'mixed_se': [
+        mixed_happy_result.bse['C(activity_group)[T.Screen-Based]'],
+        mixed_happy_result.bse['C(social_context)[T.With Others]'],
+        mixed_happy_result.bse['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]'],
+        mixed_stress_result.bse['C(activity_group)[T.Screen-Based]'],
+        mixed_stress_result.bse['C(social_context)[T.With Others]'],
+        mixed_stress_result.bse['C(activity_group)[T.Screen-Based]:C(social_context)[T.With Others]']
+    ]
+})
+
+# Save the coefficient table
+coef_data.to_csv("/Users/farangizakhadova/Downloads/figure6_coefficients_all_models.csv", index=False)
+
+# Plot positions
+y = np.arange(len(coef_data))
+
+plt.figure(figsize=(10, 6))
+
+# Weighted WLS
+plt.errorbar(
+    coef_data['weighted_coef'],
+    y + 0.18,
+    xerr=1.96 * coef_data['weighted_se'],
+    fmt='o',
+    capsize=4,
+    label='Weighted WLS + clustered SE'
+)
+
+# Unweighted clustered
+plt.errorbar(
+    coef_data['unweighted_coef'],
+    y,
+    xerr=1.96 * coef_data['unweighted_se'],
+    fmt='s',
+    capsize=4,
+    label='Unweighted clustered SE'
+)
+
+# Mixed-effects
+plt.errorbar(
+    coef_data['mixed_coef'],
+    y - 0.18,
+    xerr=1.96 * coef_data['mixed_se'],
+    fmt='^',
+    capsize=4,
+    label='Mixed-effects'
+)
+
+# Reference line at zero
+plt.axvline(0, linestyle='--', linewidth=1)
+
+# Labels
+plt.yticks(y, coef_data['term'])
+plt.xlabel('Coefficient Estimate with Approx. 95% CI')
+plt.title('Main Coefficients Across Three Model Specifications')
+
+# Put legend inside but small
+plt.legend(
+    loc='lower right',
+    fontsize=8,
+    frameon=True,
+    framealpha=0.9,
+    borderpad=0.3,
+    labelspacing=0.25,
+    handlelength=1.2
+)
+
+plt.tight_layout()
+plt.savefig('/Users/farangizakhadova/Downloads/figure6_coefficients_all_models.png', dpi=300, bbox_inches='tight')
+plt.show()
