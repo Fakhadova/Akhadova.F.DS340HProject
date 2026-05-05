@@ -40,9 +40,10 @@ The analysis code uses ATUS activity, Well-Being Module activity, respondent, ro
 ## Main Findings
 - happiness differences were clearer than stress differences
 - non-screen leisure with others had the highest weighted happiness
-- screen-based leisure was associated with lower happiness in the mixed-effects model
-- stress results were weaker and less consistent across models
-
+- screen-based leisure was consistently associated with lower happiness, but statistical significance depended on weighting
+- the unweighted clustered-SE model was closer to the mixed-effects result, pointing to survey weights as the main source of the model difference
+- stress results were weaker and not significant for the main activity/social-context predictors
+  
 ## How to Run
 1. Download the ATUS files used in the analysis.
 2. Update file paths in `main_analysis.py` if needed.
