@@ -35,6 +35,7 @@ The analysis code uses ATUS activity, Well-Being Module activity, respondent, ro
 - calculated weighted mean happiness and stress
 - estimated weighted least squares models with clustered standard errors
 - estimated mixed-effects models with respondent random intercepts
+- estimated unweighted least squares models with clustered standard errors as a sensitivity check
 
 ## Main Findings
 - happiness differences were clearer than stress differences
