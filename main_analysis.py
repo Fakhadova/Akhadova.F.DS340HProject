@@ -1367,8 +1367,8 @@ summary_table = pd.DataFrame({
 print(summary_table.to_string(index=False))
 summary_table.to_csv('/Users/farangizakhadova/Downloads/diagnostics_summary.csv', index=False)
 
-print("\n✅ All diagnostics complete!")
-print("📁 Saved: residual_diagnostics.png, diagnostics_summary.csv")
+print("\n All diagnostics complete!")
+print(" Saved: residual_diagnostics.png, diagnostics_summary.csv")
 
 # Diagnostics for ALL FOUR models
 models_to_check = [
